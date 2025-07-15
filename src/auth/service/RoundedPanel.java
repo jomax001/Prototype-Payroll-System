@@ -3,7 +3,13 @@ package auth.service;
 import javax.swing.*;
 import java.awt.*;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class RoundedPanel extends JPanel {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
     private int radius;
 
     public RoundedPanel(int radius) {

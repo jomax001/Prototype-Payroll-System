@@ -1,9 +1,17 @@
 package utils;
 
+import auth.service.LoginController;
 import java.io.FileInputStream;  // To read files from disk
 import java.util.Properties;     // For reading key=value pairs from .properties file
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class ConfigManager {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); 
+
 
     // This variable will be true if we want to use CSV instead of SQL
     private static boolean useCsv = true;

@@ -1,12 +1,19 @@
 package utils;
 
+import auth.service.LoginController;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.ResultSet;
 import javax.swing.JOptionPane;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class DBConnection {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); 
+
 
     // This is the connection link to my Neon PostgreSQL database
     private static final String URL = "jdbc:postgresql://ep-solitary-block-a1lz8vh0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";

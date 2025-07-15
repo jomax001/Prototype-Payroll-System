@@ -1,9 +1,18 @@
 package payslip.service;
 
+import auth.service.LoginController;
 import utils.SessionManager;
 import utils.JWTUtil;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
+
 public class PayslipService {
+
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); 
 
     // For Regular Employee viewing their own payslip
     public static String viewOwnPayslip(String employeeId) {

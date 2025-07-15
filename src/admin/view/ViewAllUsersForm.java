@@ -4,6 +4,7 @@
  */
 package admin.view;
 
+import auth.service.LoginController;
 import gui.AdminDashboard;
 import javax.swing.table.DefaultTableModel;
 import java.sql.Connection;
@@ -12,12 +13,16 @@ import java.sql.ResultSet;
 import javax.swing.JOptionPane;
 import utils.DBConnection;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  *
  * @author Jomax
  */
 public class ViewAllUsersForm extends javax.swing.JFrame {
 
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
     /**
      * Creates new form ViewAllUsersForm
      */

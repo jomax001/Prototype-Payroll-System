@@ -1,137 +1,230 @@
 package utils;
 
-import java.sql.*; // ✅ Needed for DB operations
+import auth.service.LoginController;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.sql.*;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class SessionManager {
 
-    private static String currentUsername; // Store the logged-in username
-    private static String currentRole;     // Store the logged-in user role
-    private static String token;           // Store the JWT token
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
-    // ✅ Set session data after successful login
+    // 🔒 In-memory store for active sessions (used when not relying on DB only)
+    private static Map<String, SessionInfo> activeSessions = new HashMap<>();
+
+    // 🧠 Local variables to track current session
+    private static String currentUsername;
+    private static String currentRole;
+    private static String token;
+
+    // ✅ Used to store session information
+    public static class SessionInfo {
+        private String role;
+        private String token;
+        private long loginTime;
+
+        public SessionInfo(String role, String token) {
+            this.role = role;
+            this.token = token;
+            this.loginTime = System.currentTimeMillis(); // Time in milliseconds
+        }
+
+        public String getRole() {
+            return role;
+        }
+
+        public String getToken() {
+            return token;
+        }
+
+        public long getLoginTime() {
+            return loginTime;
+        }
+    }
+
+    // ✅ Set the current session (used after login)
     public static void setSession(String username, String role, String jwtToken) {
         currentUsername = username;
         currentRole = role;
         token = jwtToken;
+
+        // Add to in-memory session tracker
+        activeSessions.put(username, new SessionInfo(role, jwtToken));
+
+        System.out.println("✅ [SessionManager] Session created for: " + username);
     }
 
-    // ✅ Sets the current username
+    // ✅ Getters and Setters for current user data
     public static void setUsername(String username) {
         currentUsername = username;
     }
 
-    // ✅ Returns the current username
     public static String getUsername() {
         return currentUsername;
     }
 
-    // ✅ Sets the current user role
     public static void setRole(String role) {
         currentRole = role;
     }
 
-    // ✅ Returns the current user role
     public static String getRole() {
         return currentRole;
     }
 
-    // ✅ Sets the JWT token
     public static void setToken(String jwtToken) {
         token = jwtToken;
     }
 
-    // ✅ Returns the JWT token
     public static String getToken() {
         return token;
     }
 
-    // ✅ Clears all session data (used on logout)
+    // ✅ Clear session variables during logout
     public static void logout() {
+        if (currentUsername != null) {
+            activeSessions.remove(currentUsername);
+            clearSession(currentUsername);
+            System.out.println("🔒 [SessionManager] Logged out user: " + currentUsername);
+        }
         currentUsername = null;
         currentRole = null;
         token = null;
     }
 
-    /**
-     * ✅ Checks if the given username has an active session (already logged in).
-     * Returns true if a session exists in the database.
-     */
+    // ✅ Save session to database with expiration (20 minutes)
+    public static void saveSessionToDatabase(String username, String token, String role) {
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "INSERT INTO active_sessions (username, token, role, expires_at) VALUES (?, ?, ?, ?)";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, username);
+            ps.setString(2, token);
+            ps.setString(3, role);
+            ps.setTimestamp(4, Timestamp.valueOf(java.time.LocalDateTime.now().plusMinutes(20)));
+
+            ps.executeUpdate();
+            System.out.println("✅ [Database] Session saved for: " + username);
+        } catch (Exception e) {
+            System.err.println("❌ [Database] Failed to save session: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // ✅ Save session to CSV file (used for CSV mode fallback)
+    public static void saveSessionToCSV(String username, String token, String csvRole) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("data/sessions.csv", true))) {
+            String line = username + "," + token + "," + csvRole + "," + java.time.LocalDateTime.now();
+            writer.write(line);
+            writer.newLine();
+            System.out.println("✅ [CSV] Saved session: " + line);
+        } catch (IOException e) {
+            System.out.println("⚠️ [CSV] Failed to save session: " + e.getMessage());
+        }
+    }
+
+    // ✅ Get stored token for a user (from memory)
+    public static String getTokenForUser(String username) {
+        if (activeSessions.containsKey(username)) {
+            return activeSessions.get(username).getToken();
+        }
+        return null;
+    }
+
+    // ✅ Check if a user has an active session in the database
     public static boolean hasActiveSession(String username) {
         try (Connection conn = DBConnection.getConnection()) {
             String sql = "SELECT * FROM active_sessions WHERE username = ?";
             PreparedStatement ps = conn.prepareStatement(sql);
             ps.setString(1, username);
             ResultSet rs = ps.executeQuery();
-            return rs.next(); // If a row exists, session is active
+            return rs.next(); // true if session found
         } catch (Exception e) {
+            System.out.println("⚠️ [Session Check] Error: " + e.getMessage());
             e.printStackTrace();
         }
         return false;
     }
-    
-    /**
- * Deletes all expired sessions from the active_sessions table.
- * This helps remove sessions where the token is already expired.
- */
-public static void cleanupExpiredSessions() {
-    try (Connection conn = DBConnection.getConnection()) {
-        // Delete sessions where expiration time is already passed
-        String sql = "DELETE FROM active_sessions WHERE expires_at < NOW()";
-        PreparedStatement ps = conn.prepareStatement(sql);
 
-        // Execute and get how many rows were deleted
-        int deleted = ps.executeUpdate();
+    // ✅ Cleanup expired sessions (expired JWT or idle session)
+    public static void cleanupExpiredSessions() {
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "DELETE FROM active_sessions WHERE expires_at < NOW()";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            int deleted = ps.executeUpdate();
 
-        // Print based on result
-        if (deleted > 0) {
-            System.out.println("✅ Expired sessions deleted: " + deleted);
-        } else {
-            System.out.println("⚠️ No expired sessions were deleted. (Maybe none are expired yet.)");
+            System.out.println(" [Cleanup] Expired sessions removed: " + deleted);
+        } catch (Exception e) {
+            System.err.println("❌ [Cleanup] Failed: " + e.getMessage());
         }
-    } catch (Exception e) {
-        System.err.println("❌ Error while deleting expired sessions: " + e.getMessage());
-        e.printStackTrace();
     }
-}
 
-/**
- * ✅ Saves the session to the active_sessions table with an expiration timestamp.
- * This allows me to track valid sessions and auto-expire them after 20 minutes.
- */
-public static void saveSessionToDatabase(String username, String token, String role) {
-    try (Connection conn = DBConnection.getConnection()) {
-        String sql = "INSERT INTO active_sessions (username, token, role, expires_at) VALUES (?, ?, ?, ?)";
+    // ✅ Cleanup expired "remember me" tokens
+    public static void cleanupExpiredRememberTokens() {
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "DELETE FROM remember_tokens WHERE expires_at < NOW()";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            int deleted = ps.executeUpdate();
 
-        PreparedStatement ps = conn.prepareStatement(sql);
-        ps.setString(1, username);
-        ps.setString(2, token);
-        ps.setString(3, role);
-
-        // Set expires_at to current time + 20 minutes
-        Timestamp expiresAt = Timestamp.valueOf(java.time.LocalDateTime.now().plusMinutes(20));
-        ps.setTimestamp(4, expiresAt);
-
-        ps.executeUpdate();
-        System.out.println("✅ Session saved to database with expiration: " + expiresAt);
-    } catch (Exception e) {
-        System.err.println("❌ Failed to save session to database: " + e.getMessage());
-        e.printStackTrace();
+            System.out.println(" [Cleanup] Expired remember tokens removed: " + deleted);
+        } catch (Exception e) {
+            System.err.println("❌ [Cleanup Remember] Failed: " + e.getMessage());
+        }
     }
-}
 
-/**
- * Deletes all expired remember tokens from the database.
- */
-public static void cleanupExpiredRememberTokens() {
-    try (Connection conn = DBConnection.getConnection()) {
-        String sql = "DELETE FROM remember_tokens WHERE expires_at < NOW()";
-        PreparedStatement ps = conn.prepareStatement(sql);
-        int deleted = ps.executeUpdate();
-        System.out.println(" Expired remember tokens deleted: " + deleted);
-    } catch (Exception e) {
-        System.err.println("❌ Failed to clean up expired remember tokens: " + e.getMessage());
-        e.printStackTrace();
+    // ✅ Clear session from database (used on logout)
+    public static void clearSession(String username) {
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "DELETE FROM active_sessions WHERE username = ?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, username);
+            ps.executeUpdate();
+
+            System.out.println("✅ [Logout] Cleared session from DB for: " + username);
+        } catch (Exception e) {
+            System.err.println("❌ [Logout] Failed to clear session: " + e.getMessage());
+        }
     }
-}
 
+    // ✅ Updates user's last active time (used for idle timeout)
+    public static void updateLastActive(String username) {
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "UPDATE active_sessions SET last_active = CURRENT_TIMESTAMP WHERE username = ?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, username);
+            ps.executeUpdate();
+
+            System.out.println("⏰ [Activity] Updated last activity for: " + username);
+        } catch (Exception e) {
+            System.out.println("⚠️ [Activity] Failed to update last active: " + e.getMessage());
+        }
+    }
+
+    // ✅ Check if the user has been idle for more than 10 minutes
+    public static boolean isUserIdle(String username) {
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "SELECT last_active FROM active_sessions WHERE username = ?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, username);
+            ResultSet rs = ps.executeQuery();
+
+            if (rs.next()) {
+                Timestamp lastActive = rs.getTimestamp("last_active");
+                long idleMillis = System.currentTimeMillis() - lastActive.getTime();
+
+                long tenMinutes = 10 * 60 * 1000;
+                if (idleMillis > tenMinutes) {
+                    System.out.println("🚫 [Idle] User " + username + " has been idle for more than 10 minutes.");
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("⚠️ [Idle Check] Failed: " + e.getMessage());
+        }
+        return false;
+    }
 }

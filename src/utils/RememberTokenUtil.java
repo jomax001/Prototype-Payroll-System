@@ -1,9 +1,16 @@
 package utils;
 
+import auth.service.LoginController;
 import java.sql.*;
 import utils.DBConnection;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class RememberTokenUtil {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); 
 
     /**
      * Saves a user's remember token in the database.

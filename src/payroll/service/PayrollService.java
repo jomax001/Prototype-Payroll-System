@@ -1,9 +1,16 @@
 package payroll.service;
 
+import auth.service.LoginController;
 import utils.SessionManager;
 import utils.JWTUtil;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class PayrollService {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     // Simulated "REST-like" salary calculation method
     public static String calculateSalary(String employeeId) {

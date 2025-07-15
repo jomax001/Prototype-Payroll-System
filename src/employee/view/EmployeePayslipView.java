@@ -4,14 +4,21 @@
  */
 package employee.view;
 
+import auth.service.LoginController;
 import gui.EmployeeDashboard;
 import gui.HRDashboard;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Jomax
  */
 public class EmployeePayslipView extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     /**
      * Creates new form MyPayslipView

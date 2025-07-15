@@ -8,7 +8,13 @@ package auth.service;
  *
  * @author Jomax
  */
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 public class RecoveryPageForm extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     /**
      * Creates new form RecoveryPageForm

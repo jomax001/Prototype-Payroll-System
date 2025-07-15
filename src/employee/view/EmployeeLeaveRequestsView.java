@@ -4,13 +4,20 @@
  */
 package employee.view;
 
+import auth.service.LoginController;
 import gui.EmployeeDashboard;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Jomax
  */
 public class EmployeeLeaveRequestsView extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     /**
      * Creates new form EmployeeLeaveRequestsView

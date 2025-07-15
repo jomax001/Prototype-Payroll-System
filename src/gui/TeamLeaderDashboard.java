@@ -15,11 +15,17 @@ import teamleaderview.UpdateTeamInfoView;
 import utils.JWTUtil;
 import utils.SessionManager;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 /**
  *
  * @author Jomax
  */
 public class TeamLeaderDashboard extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     /**
      * Creates new form TeamLeader
@@ -33,8 +39,34 @@ public class TeamLeaderDashboard extends javax.swing.JFrame {
         setSize(800, 500);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
-        startTokenMonitor(); // Start the token watcher
+        
+        startTokenMonitor();  // 🔐 check for JWT expiration
+        startIdleTimer();     // ⏰ check for user inactivity
     }
+    
+    // ✅ This method checks every 1 minute (60000ms) if the user has been idle for more than 10 minutes
+private void startIdleTimer() {
+    new javax.swing.Timer(60000, new java.awt.event.ActionListener() {
+        @Override
+        public void actionPerformed(java.awt.event.ActionEvent e) {
+            String username = SessionManager.getUsername();
+
+            if (SessionManager.isUserIdle(username)) {
+                JOptionPane.showMessageDialog(null, "You were idle for 10 minutes. Logging out for security.");
+
+                // Clear session in memory
+                SessionManager.logout();
+
+                // Show login screen
+                new LoginUI().setVisible(true);
+
+                // Close current dashboard
+                dispose();
+            }
+        }
+    }).start();
+}
+
     
     // This method checks token expiration every 10 minutes
 private void startTokenMonitor() {

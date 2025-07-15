@@ -1,9 +1,16 @@
 package employee.service;
 
+import auth.service.LoginController;
 import utils.SessionManager;
 import utils.JWTUtil;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class EmployeeService {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     public static String viewEmployeeList() {
         String token = SessionManager.getToken();

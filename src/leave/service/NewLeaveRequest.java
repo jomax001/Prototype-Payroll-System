@@ -4,13 +4,21 @@
  */
 package leave.service;
 
+import auth.service.LoginController;
 import gui.HRDashboard;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Jomax
  */
 public class NewLeaveRequest extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); // or DBConnection.class
+
 
     /**
      * Creates new form NewLeaveRequest

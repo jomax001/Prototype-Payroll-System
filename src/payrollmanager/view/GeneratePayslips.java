@@ -4,13 +4,21 @@
  */
 package payrollmanager.view;
 
+import auth.service.LoginController;
 import gui.PayrollManagerDashboard;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Jomax
  */
 public class GeneratePayslips extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
+
 
     /**
      * Creates new form GeneratePayslips

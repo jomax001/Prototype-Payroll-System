@@ -1,303 +1,306 @@
 package auth.service;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.sql.*;
-import javax.swing.JOptionPane;
-import utils.DBConnection;
-import utils.EmailUtil;
-import utils.JWTUtil;
-import utils.SessionManager;
-import utils.ConfigManager; 
-import utils.CSVUtil;
+import java.time.Instant;
 import java.util.List;
-import utils.CSVSessionWriter;
-import utils.OTPUtil;
+import javax.swing.JOptionPane;
+
+import utils.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.io.FileWriter;
+import java.io.IOException;
+
 
 public class LoginController {
-    
-    // ✅ This method performs login using users.csv file
-private static String loginFromCsv(String username, String password, String role) {
-    List<String[]> rows = CSVUtil.readCSV("data/users.csv");
 
-    for (int i = 1; i < rows.size(); i++) { // Skip header
-        String[] row = rows.get(i);
-        if (row.length < 22) continue; // Skip rows with missing data
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
-        String fileUsername = row[0].trim();
-        String filePassword = row[1].trim();
-        String fileRole = row[20].trim(); // 'Department' column as role
+    // ✅ Login using CSV user file
+    public static String loginFromCSV(String username, String password, String selectedRole) {
+        if (LoginUI.isRememberMeCheckedStatic()) {
+        List<String[]> rows = CSVUtil.readCSV("data/users.csv");
 
-        // Check match
-    if (username.equals(fileUsername) && password.equals(filePassword) && role.equalsIgnoreCase(fileRole)) {
-    // ✅ 1. Generate JWT token (fake or real, your choice)
-    String token = JWTUtil.generateToken(username);
+        for (int i = 1; i < rows.size(); i++) {
+            String[] row = rows.get(i);
+            if (row.length < 22) continue;
 
-    // ✅ 2. Generate OTP (e.g., 6-digit random)
-    String otp = OTPUtil.generateOtpCode(); // Create a new OTP
-    String expiry = OTPUtil.getExpiryTime(5); // 5-minute expiry
-    int attempts = 0; // Start with 0 attempts
+            String csvUsername = row[0].trim();
+            String csvPassword = row[1].trim();
+            String email = row[2].trim();
+            String csvRole = row[3].trim();
 
-    // ✅ 3. Write token and OTP to users_with_token.csv
-    CSVSessionWriter.updateUserSession(username, token, otp, expiry, attempts);
+            if (username.equals(csvUsername) && password.equals(csvPassword)) {
+                if (!selectedRole.equalsIgnoreCase(csvRole)) {
+                    System.out.println("❌ Role mismatch.");
+                    return "wrong_role";
+                }
+            }
 
-    // ✅ 4. Set session in memory
-    SessionManager.setSession(username, role, token);
+                // ✅ Check if token already exists and is valid
+                String existingToken = SessionManager.getTokenForUser(username);
+                if (existingToken != null && JWTUtil.validateToken(existingToken)
+                        && JWTUtil.getUsername(existingToken).equals(username)) {
 
-    // ✅ 5. Send OTP via email (optional kung meron kang email)
-    EmailUtil.sendOtpCode(getUserEmailFromCSV(username), otp); // You can create this helper
+                    System.out.println("✅ Reusing valid token from CSV for: " + username);
+                    SessionManager.setSession(username, csvRole, existingToken);
+                    return csvRole;
+                }
 
-    System.out.println("✅ Login (CSV) successful. OTP sent.");
-    return "success";
-}
+                // ✅ Generate new token if none or expired
+                String token = JWTUtil.generateToken(username);
+                SessionManager.setSession(username, csvRole, token);
+                SessionManager.saveSessionToCSV(username, token, csvRole);
+                
+                // ✅ Save the token to remember_token.dat if Remember Me is selected
+                if (LoginUI.isRememberMeCheckedStatic()) {
+                    try (FileWriter fw = new FileWriter("remember_token.dat")) {
+                fw.write(token);
+                    System.out.println("✅ Token saved to remember_token.dat");
+                } catch (IOException e) {
+                    System.out.println("❌ Failed to save token file: " + e.getMessage());
+                    }
+                }
 
-    // ✅ Generate JWT token
-    String token = JWTUtil.generateToken(username);
+                
+                
 
-    // ✅ Generate OTP and its expiry
-    String generatedOtp = utils.OTPUtil.generateOtp(); // You should have OTPUtil already
-    String expiryTimeStr = java.time.LocalDateTime.now().plusMinutes(5).toString(); // Expires in 5 mins
-    int otpAttempts = 0; // Reset attempts
+                // ✅ Generate and store OTP
+                String otp = OTPUtil.generateOtpCode();
+                Timestamp expiresAt = Timestamp.valueOf(java.time.LocalDateTime.now().plusMinutes(5));
+                OTPUtil.storeOtp(username, otp, expiresAt);
+                CSVSessionWriter.updateUserSession(username, token, otp, expiresAt.toString(), 0);
+                EmailUtil.sendOtpCode(email, otp);
 
-    // ✅ Save session in memory (or wherever your SessionManager stores it)
-    SessionManager.setSession(username, role, token);
-
-    // ✅ Save session info into a new CSV (token, OTP, expiry, attempts)
-    utils.CSVSessionWriter.updateUserSession(
-        username,
-        token,
-        generatedOtp,
-        expiryTimeStr,
-        otpAttempts
-    );
-
-    System.out.println("✅ Login successful using CSV + Token + OTP");
-    return "success";
-}
-    
-
-    return "invalid"; // Login failed in CSV mode
-}
-    
-    
-    // ✅ Check if the user already has an active session (used to block multi-device login)
-public static boolean hasActiveSession(String username) {
-    try (Connection conn = DBConnection.getConnection()) {
-        // SQL query to check if a session already exists for this user
-        String sql = "SELECT * FROM active_sessions WHERE username = ?";
-        PreparedStatement ps = conn.prepareStatement(sql);
-        ps.setString(1, username);
-        ResultSet rs = ps.executeQuery();
-
-        // If there's a result, it means the user is already logged in
-        return rs.next();
-    } catch (Exception e) {
-        e.printStackTrace();
-        return false; // Assume no active session if there's an error
-    }
-}
-
-// ✅ Save the current session to the database (token and login time)
-public static void saveSession(String username, String token) {
-    try (Connection conn = DBConnection.getConnection()) {
-        // Insert the new session or update existing one (by username)
-        String sql = "INSERT INTO active_sessions (username, token, last_active) VALUES (?, ?, CURRENT_TIMESTAMP) " +
-             "ON CONFLICT (username) DO UPDATE SET token = EXCLUDED.token, login_time = CURRENT_TIMESTAMP, last_active = CURRENT_TIMESTAMP";
-        PreparedStatement ps = conn.prepareStatement(sql);
-        ps.setString(1, username); // Set username
-        ps.setString(2, token);    // Set the session token
-        ps.executeUpdate();        // Save the session
-    } catch (Exception e) {
-        e.printStackTrace(); // Print any error
-    }
-}
-
-// ✅ Remove a session from the database (used when user logs out)
-public static void clearSession(String username) {
-    try (Connection conn = DBConnection.getConnection()) {
-        // SQL to delete the session for the given username
-        String sql = "DELETE FROM active_sessions WHERE username = ?";
-        PreparedStatement ps = conn.prepareStatement(sql);
-        ps.setString(1, username); // Set username
-        ps.executeUpdate();        // Execute deletion
-    } catch (Exception e) {
-        e.printStackTrace(); // Show any error
-    }
-}
-
-// ✅ This method updates the 'last_active' column for a user to the current time
-public static void updateLastActive(String username) {
-    try (Connection conn = DBConnection.getConnection()) {
-        // SQL query to update the last_active timestamp of the given user
-        String sql = "UPDATE active_sessions SET last_active = CURRENT_TIMESTAMP WHERE username = ?";
-        
-        // Prepare the SQL statement
-        PreparedStatement ps = conn.prepareStatement(sql);
-        
-        // Set the username in the query (where username = ?)
-        ps.setString(1, username);
-        
-        // Execute the update (run the SQL command)
-        ps.executeUpdate();
-    } catch (Exception e) {
-        // If there's any error (e.g., no connection), print the error
-        e.printStackTrace();
-    }
-}
-
-
-    // This method handles the login logic and returns a String result
-    public static String login(String username, String password, String role) {
-    // ✅ Step 1: Check if config is set to CSV mode
-    if (ConfigManager.isUsingCsv()) {
-        return loginFromCsv(username, password, role); // Skip SQL, go CSV
-    }
-        
-        // ✅ Step 2: Clean up expired sessions before doing anything
-        SessionManager.cleanupExpiredSessions();
-        SessionManager.cleanupExpiredRememberTokens(); // Clean tokens on startup/login
-        
-        
-        try (Connection conn = DBConnection.getConnection()) {
-            
-            
-        // ✅ Step 3: Check if user already has an active session
-        if (SessionManager.hasActiveSession(username)) {
-            return "active_session"; // 🔒 Tell LoginUI this user is already logged in elsewhere
+                System.out.println("📧 OTP sent to " + email);
+                return csvRole;
+            }
         }
 
-            // Check if the user exists with the given username and role
-            String checkUser = "SELECT * FROM users WHERE username = ? AND role = ?";
-            PreparedStatement ps = conn.prepareStatement(checkUser);
+        System.out.println("❌ Invalid credentials in CSV.");
+        return "invalid";
+    }
+    
+
+    // ✅ Login using database
+    public static String login(String username, String password, String role) {
+        if (ConfigManager.isUsingCsv()) {
+            return loginFromCSV(username, password, role);
+        }
+
+        SessionManager.cleanupExpiredSessions();
+        SessionManager.cleanupExpiredRememberTokens();
+
+        try (Connection conn = DBConnection.getConnection()) {
+
+            if (SessionManager.hasActiveSession(username)) {
+                System.out.println("⚠️ User already has active session.");
+                return "active_session";
+            }
+
+            String query = "SELECT * FROM users WHERE username = ? AND role = ?";
+            PreparedStatement ps = conn.prepareStatement(query);
             ps.setString(1, username);
             ps.setString(2, role);
-
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
-                // Get account lock status and time
                 boolean isLocked = rs.getBoolean("account_locked");
                 int failedAttempts = rs.getInt("failed_attempts");
                 Timestamp lockTime = rs.getTimestamp("lock_time");
 
-                // If the account is locked
-                if (isLocked) {
-                    long lockDuration = System.currentTimeMillis() - lockTime.getTime();
+                if (isLocked && System.currentTimeMillis() - lockTime.getTime() < 86400000) {
+                    System.out.println("🚫 Account is locked for 24 hours.");
+                    return "locked";
+                } else if (isLocked) {
+                    resetLock(conn, username);
+                }
 
-                    // If 24 hours have passed, unlock the account
-                    if (lockDuration >= 86400000) {
-                        resetLock(conn, username); // reset lock status
-                    } else {
-                        return "locked"; // account still locked
-                    }
-                }                          
-
-                // Check if password matches
                 String dbPassword = rs.getString("password");
                 if (password.equals(dbPassword)) {
-                    resetLock(conn, username); // reset attempts if correct
+                    resetLock(conn, username);
 
-                    // generate a token to secure the session
+                    // ✅ Check for existing valid token in DB
+                    String savedToken = rs.getString("jwt_token");
+                    if (savedToken != null && JWTUtil.validateToken(savedToken)
+                            && JWTUtil.getUsername(savedToken).equals(username)) {
+
+                        System.out.println("✅ Reusing valid DB token for " + username);
+                        SessionManager.setSession(username, role, savedToken);
+                        SessionManager.saveSessionToDatabase(username, savedToken, role);
+                        return role;
+                    }
+
+                    // ❌ Token is missing or expired — create new one
                     String token = JWTUtil.generateToken(username);
-                    
-                    System.out.println("✅ Generated JWT token: " + token); // 🖨️ Print to console
-
-                    // store the token in the database so we can use it later
-                    String updateTokenSQL = "UPDATE users SET jwt_token = ? WHERE username = ?";
-                    PreparedStatement tokenStmt = conn.prepareStatement(updateTokenSQL);
+                    PreparedStatement tokenStmt = conn.prepareStatement("UPDATE users SET jwt_token = ? WHERE username = ?");
                     tokenStmt.setString(1, token);
                     tokenStmt.setString(2, username);
                     tokenStmt.executeUpdate();
 
-                    // set the session with username, role, and the token
                     SessionManager.setSession(username, role, token);
                     SessionManager.saveSessionToDatabase(username, token, role);
+                    
+                    // ✅ Save the token to remember_token.dat if Remember Me is selected
+                    if (LoginUI.isRememberMeCheckedStatic()) {
+                        try (FileWriter fw = new FileWriter("remember_token.dat")) {
+                    fw.write(token);
+                        System.out.println("✅ Token saved to remember_token.dat");
+                    } catch (IOException e) {
+                        System.out.println("❌ Failed to save token file: " + e.getMessage());
+                        }
+                    }
 
-                    return "success"; // login passed
+
+                    String email = OTPUtil.getUserEmail(username);
+
+                    // ✅ Generate new OTP only if needed
+                    if (!OTPUtil.hasValidOtp(username)) {
+                        String otp = OTPUtil.generateOtpCode();
+                        Timestamp expiresAt = Timestamp.from(Instant.now().plusSeconds(300));
+                        OTPUtil.storeOtp(username, otp, expiresAt);
+                        EmailUtil.sendOtpCode(email, otp);
+                        System.out.println("📧 OTP sent to: " + email);
+                    } else {
+                        System.out.println("✅ OTP still valid. Skipping re-send.");
+                    }
+
+                    return role;
                 } else {
-                    incrementFailedAttempts(conn, username, failedAttempts); // add to failed count
-                    return "invalid"; // wrong password
+                    incrementFailedAttempts(conn, username, failedAttempts);
+                    System.out.println("❌ Incorrect password.");
+                    return "invalid";
                 }
             } else {
-                return "not_found"; // no user found
+                System.out.println("❌ User not found in database.");
+                return "not_found";
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return "error"; // return error if exception occurs
+            logger.error("Exception during login:", e);
+            return "error";
         }
     }
-    
-    // Method to check if the database is connected
-public static boolean isDatabaseConnected() {
-    try (Connection conn = utils.DBConnection.getConnection()) {
-        return conn != null;
-    } catch (Exception e) {
-        return false;
-    }
-}
-    // This method resets the lock state of a user after successful login or 24 hours passed
+
+    // ✅ Reset lock after successful login
     private static void resetLock(Connection conn, String username) {
         try {
-            // Update the user record to remove lock and reset failed attempts
-            String sql = "UPDATE users SET failed_attempts = 0, account_locked = false, lock_time = NULL WHERE username = ?";
-            PreparedStatement ps = conn.prepareStatement(sql);
+            PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE users SET failed_attempts = 0, account_locked = false, lock_time = NULL WHERE username = ?");
             ps.setString(1, username);
             ps.executeUpdate();
+            System.out.println("🔓 Lock reset for user: " + username);
         } catch (SQLException e) {
-            // If something goes wrong, show error
-            JOptionPane.showMessageDialog(null, "Failed to reset user lock status: " + e.getMessage());
+            JOptionPane.showMessageDialog(null, "Failed to reset lock: " + e.getMessage());
         }
     }
 
-    // This method increases the failed login attempts and locks the account after 3 tries
+    // ✅ Increase failed attempt counter and lock after 3 tries
     private static void incrementFailedAttempts(Connection conn, String username, int current) {
         try {
-            current++; // adding 1 to the current failed attempts
-
-            // If user failed 3 times already
+            current++;
             if (current >= 3) {
-                // get the current time
                 Timestamp now = new Timestamp(System.currentTimeMillis());
+                Timestamp lockedUntil = new Timestamp(now.getTime() + (24 * 60 * 60 * 1000));
 
-                // set lockedUntil to 24 hours from now
-                Timestamp lockedUntil = new Timestamp(System.currentTimeMillis() + (24 * 60 * 60 * 1000));
+                PreparedStatement ps = conn.prepareStatement(
+                        "UPDATE users SET account_locked = true, lock_time = ?, locked_until = ?, failed_attempts = ? WHERE username = ?");
+                ps.setTimestamp(1, now);
+                ps.setTimestamp(2, lockedUntil);
+                ps.setInt(3, current);
+                ps.setString(4, username);
+                ps.executeUpdate();
 
-                // lock the account and store lock time and unlock time
-                String lockSQL = "UPDATE users SET account_locked = true, lock_time = ?, locked_until = ?, failed_attempts = ? WHERE username = ?";
-                PreparedStatement lockStmt = conn.prepareStatement(lockSQL);
-                lockStmt.setTimestamp(1, now);
-                lockStmt.setTimestamp(2, lockedUntil); // ✅ This is used by the GUI timer
-                lockStmt.setInt(3, current);
-                lockStmt.setString(4, username);
-                lockStmt.executeUpdate();
-
-                // get the user's email so I can notify them
                 PreparedStatement emailStmt = conn.prepareStatement("SELECT email FROM users WHERE username = ?");
                 emailStmt.setString(1, username);
                 ResultSet rs = emailStmt.executeQuery();
                 if (rs.next()) {
-                    String userEmail = rs.getString("email");
-                    EmailUtil.sendLockNotification(userEmail); // I send the lock email here
+                    String email = rs.getString("email");
+                    EmailUtil.sendLockNotification(email);
+                    System.out.println("📧 Lock email sent to: " + email);
                 }
 
-                // show a message so the user knows what happened
-                JOptionPane.showMessageDialog(null, "Your account has been locked due to 3 failed login attempts.\nPlease check your email or contact your admin.");
+                JOptionPane.showMessageDialog(null, "Your account is locked due to 3 failed attempts. Please check your email.");
             } else {
-                // If failed attempts are less than 3, I just update the count
-                String updateSQL = "UPDATE users SET failed_attempts = ? WHERE username = ?";
-                PreparedStatement ps = conn.prepareStatement(updateSQL);
+                PreparedStatement ps = conn.prepareStatement("UPDATE users SET failed_attempts = ? WHERE username = ?");
                 ps.setInt(1, current);
                 ps.setString(2, username);
                 ps.executeUpdate();
+                System.out.println("⚠️ Failed attempt " + current + " for user: " + username);
             }
-
         } catch (SQLException e) {
-            // show an error if something went wrong
             JOptionPane.showMessageDialog(null, "Error updating failed attempts: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
-    private static String getUserEmailFromCSV(String username) {
-        throw new UnsupportedOperationException("Not supported yet."); // Generated from nbfs://nbhost/SystemFileSystem/Templates/Classes/Code/GeneratedMethodBody
+    /**
+ * ✅ Checks if the system is able to connect to the database.
+ * Used to test if the DB is online and accessible.
+ *
+ * @return true if connected, false if there's an error.
+ */
+public static boolean isDatabaseConnected() {
+    try (Connection conn = DBConnection.getConnection()) {
+        if (conn != null) {
+            System.out.println("✅ [Database] Connection is successful.");
+            return true;
+        }
+    } catch (Exception e) {
+        System.out.println("❌ [Database] Failed to connect: " + e.getMessage());
+        e.printStackTrace(); // Print full error for debugging
     }
+    return false;
+}
+
+
+    /**
+ * ✅ Saves the current session (JWT token) to the database.
+ * This is used to track who is currently logged in.
+ *
+ * @param username the user logging in
+ * @param token the generated JWT token for that user
+ */
+public static void saveSession(String username, String token) {
+    try (Connection conn = DBConnection.getConnection()) {
+        // SQL: Insert new session or update if user already exists
+        String sql = "INSERT INTO active_sessions (username, token, login_time, last_active) " +
+                     "VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+                     "ON CONFLICT (username) DO UPDATE SET token = EXCLUDED.token, login_time = CURRENT_TIMESTAMP, last_active = CURRENT_TIMESTAMP";
+
+        PreparedStatement ps = conn.prepareStatement(sql);
+        ps.setString(1, username); // Set username
+        ps.setString(2, token);    // Set token
+        ps.executeUpdate();        // Execute update or insert
+
+        System.out.println("✅ [Session] Saved session for user: " + username);
+    } catch (Exception e) {
+        System.out.println("❌ [Session] Failed to save session for " + username + ": " + e.getMessage());
+        e.printStackTrace(); // Shows the full error stack
+    }
+}
+
+
+    /**
+ * ✅ Clears the user's session from the database.
+ * Called when a user logs out or is forcefully logged out.
+ *
+ * @param username the user whose session should be removed
+ */
+public static void clearSession(String username) {
+    try (Connection conn = DBConnection.getConnection()) {
+        // SQL: Delete the session of the specified user
+        String sql = "DELETE FROM active_sessions WHERE username = ?";
+        PreparedStatement ps = conn.prepareStatement(sql);
+        ps.setString(1, username); // Set username
+        ps.executeUpdate();        // Execute deletion
+
+        System.out.println("✅ [Session] Cleared session for user: " + username);
+    } catch (Exception e) {
+        System.out.println("❌ [Session] Failed to clear session for " + username + ": " + e.getMessage());
+        e.printStackTrace(); // Print full stack trace for debugging
+    }
+}
 }

@@ -4,6 +4,7 @@
  */
 package hr.view;
 
+import auth.service.LoginController;
 import gui.HRDashboard;
 import hr.view.EmployeeListForm;
 import java.sql.Connection;
@@ -14,11 +15,19 @@ import java.text.SimpleDateFormat;
 import java.text.ParseException;
 import javax.swing.JOptionPane;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
+
 /**
  *
  * @author Jomax
  */
 public class ManageEmployeeForm extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); 
+
 
     /**
      * Creates new form NewManageEmployeeForm

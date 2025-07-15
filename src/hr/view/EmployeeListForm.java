@@ -1,5 +1,6 @@
 package hr.view;
 
+import auth.service.LoginController;
 import gui.HRDashboard;
 import java.sql.*;
 import java.util.Vector;
@@ -13,11 +14,17 @@ import javax.swing.JFileChooser;
 import java.text.MessageFormat;
 import javax.swing.JFrame;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 /**
  *
  * @author Jomax
  */
 public class EmployeeListForm extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
     
     // Holds the most recently deleted employee info (for Undo)
     private Object[] lastDeletedEmployee = null;

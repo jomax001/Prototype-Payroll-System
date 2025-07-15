@@ -4,6 +4,7 @@
  */
 package admin.view;
 
+import auth.service.LoginController;
 import javax.swing.JOptionPane;
 import utils.DBConnection;
 import java.sql.Connection;
@@ -11,11 +12,16 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import javax.swing.table.DefaultTableModel;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  *
  * @author Jomax
  */
 public class UnlockUserForm extends javax.swing.JFrame {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
 
     /**
      * Creates new form UnlockUserForm

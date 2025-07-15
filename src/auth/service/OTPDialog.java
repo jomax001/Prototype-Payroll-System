@@ -11,7 +11,14 @@ package auth.service;
 import javax.swing.*;
 import java.awt.*;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 public class OTPDialog extends JDialog {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class);
+    
     private JTextField otpField;
     private boolean submitted = false;
 

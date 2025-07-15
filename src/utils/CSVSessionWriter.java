@@ -6,14 +6,22 @@ package utils;
  * @author Jomax
  */
 
+import auth.service.LoginController;
 import java.io.*;
 import java.util.*;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Utility class for managing JWT and OTP in CSV-based login systems.
  * It reads from users.csv and writes to users_with_token.csv.
  */
 public class CSVSessionWriter {
+    
+    private static final Logger logger = LogManager.getLogger(LoginController.class); // or DBConnection.class
+
 
     // ✅ Update or create session data for a specific user
     public static void updateUserSession(String username, String jwtToken, String otp, String expiry, int attempts) {
